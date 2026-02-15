@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { getDeviceVoterId, getFirebaseUid
-  , hasVotedOn, markVoted } from "@/lib/voter";
-import Layout from "@/components/Layout";
+import { getDeviceVoterId, hasVotedOn, markVoted } from "@/lib/voter";
 
 interface RoomOption {
   id: string;
   label: string;
 }
 
-function PollRoom() {
+export default function PollRoom() {
   const { roomId } = useParams<{ roomId: string }>();
+
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<RoomOption[]>([]);
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({});
   const [totalVotes, setTotalVotes] = useState(0);
   const [voted, setVoted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
@@ -29,14 +26,19 @@ function PollRoom() {
       setVoted(true);
     }
 
-    loadRoom();
+    loadPoll();
     loadVotes();
 
     const channel = supabase
       .channel(`room-${roomId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "votes", filter: `room_id=eq.${roomId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "votes",
+          filter: `room_id=eq.${roomId}`,
+        },
         () => {
           loadVotes();
         }
@@ -48,7 +50,7 @@ function PollRoom() {
     };
   }, [roomId]);
 
-  async function loadRoom() {
+  async function loadPoll() {
     const { data: room } = await supabase
       .from("rooms")
       .select("question")
@@ -74,151 +76,112 @@ function PollRoom() {
   }
 
   async function loadVotes() {
-    const { data: allVotes } = await supabase
+    const { data } = await supabase
       .from("votes")
       .select("option_id")
       .eq("room_id", roomId!);
 
-    if (!allVotes) return;
+    if (!data) return;
 
     const counts: Record<string, number> = {};
-    allVotes.forEach((v) => {
+    data.forEach((v) => {
       counts[v.option_id] = (counts[v.option_id] || 0) + 1;
     });
 
     setVoteCounts(counts);
-    setTotalVotes(allVotes.length);
+    setTotalVotes(data.length);
   }
 
   async function castVote(optionId: string) {
-  if (voted || submitting) return;
+    if (voted) return;
 
-  setSubmitting(true);
+    const voterId = getDeviceVoterId();
 
-  const deviceId = getDeviceVoterId();
-  const firebaseUid = getFirebaseUid();
+    const { error } = await supabase.from("votes").insert({
+      room_id: roomId!,
+      option_id: optionId,
+      voter_id: voterId,
+    });
 
-  const { error } = await supabase.from("votes").insert({
-    room_id: roomId!,
-    option_id: optionId,
-    voter_id: deviceId,
-    firebase_uid: firebaseUid,
-  });
-
-  if (error) {
-    // unique constraint triggered
-    if (error.code === "23505") {
-      setVoted(true);
+    if (!error) {
       markVoted(roomId!);
+      setVoted(true);
     }
-
-    setSubmitting(false);
-    return;
   }
 
-  markVoted(roomId!);
-  setVoted(true);
-  setSubmitting(false);
-}
-
-
-  function shareLink() {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  function copyLink() {
+    navigator.clipboard.writeText(window.location.href);
   }
 
-  if (loading) {
+  if (loading) return <div className="p-10 text-center">Loading poll...</div>;
+
+  if (notFound)
     return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-[calc(100vh-8rem)]">
-          <p className="text-muted-foreground">Loading poll...</p>
-        </div>
-      </Layout>
+      <div className="p-10 text-center">
+        Poll not found.
+        <br />
+        <Link to="/">Create new poll</Link>
+      </div>
     );
-  }
-
-  if (notFound) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] p-4">
-          <div className="text-center">
-            <p className="text-foreground text-lg mb-3">Poll not found.</p>
-            <Link to="/" className="text-sm text-primary hover:underline">
-              Create a new poll
-            </Link>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
-    <Layout>
-      <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] p-4">
-        <div className="w-full max-w-lg">
-          <div className="bg-card rounded-xl shadow-lg border border-border p-8">
-            <h1 className="text-xl font-bold text-foreground mb-1">
-              {question}
-            </h1>
-            <p className="text-sm text-muted-foreground mb-6">
-              {totalVotes} vote{totalVotes !== 1 ? "s" : ""} so far
-            </p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-lg bg-white shadow-lg rounded-xl p-8">
+        <h1 className="text-xl font-bold mb-2">{question}</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          {totalVotes} vote{totalVotes !== 1 ? "s" : ""}
+        </p>
 
-            <div className="space-y-3 mb-6">
-              {options.map((opt) => {
-                const count = voteCounts[opt.id] || 0;
-                const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+        <div className="space-y-3">
+          {options.map((opt) => {
+            const count = voteCounts[opt.id] || 0;
+            const percentage =
+              totalVotes > 0
+                ? Math.round((count / totalVotes) * 100)
+                : 0;
 
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => castVote(opt.id)}
-                    disabled={voted || submitting}
-                    className="w-full text-left border border-input rounded-lg p-3.5 relative overflow-hidden disabled:cursor-default hover:border-primary/50 transition-all hover:shadow-sm"
-                  >
-                    {voted && (
-                      <div
-                        className="absolute inset-y-0 left-0 bg-primary/15 transition-all duration-700 ease-out"
-                        style={{ width: `${pct}%` }}
-                      />
-                    )}
-                    <div className="relative flex justify-between items-center">
-                      <span className="text-sm text-foreground font-medium">{opt.label}</span>
-                      {voted && (
-                        <span className="text-sm text-muted-foreground ml-2 tabular-nums">
-                          {pct}% ({count})
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {voted && (
-              <p className="text-xs text-primary font-medium mb-4">
-                Your vote has been recorded.
-              </p>
-            )}
-
-            <div className="flex gap-4 pt-2 border-t border-border">
+            return (
               <button
-                onClick={shareLink}
-                className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                key={opt.id}
+                onClick={() => castVote(opt.id)}
+                disabled={voted}
+                className="relative w-full text-left border rounded-lg p-3 overflow-hidden transition hover:border-blue-400 disabled:cursor-default"
               >
-                {copied ? "Copied!" : "Copy share link"}
+                {totalVotes > 0 && (
+                  <div
+                    className="absolute inset-y-0 left-0 bg-blue-100 transition-all duration-500"
+                    style={{ width: `${percentage}%` }}
+                  />
+                )}
+
+                <div className="relative flex justify-between">
+                  <span className="font-medium">{opt.label}</span>
+                  {totalVotes > 0 && (
+                    <span className="text-sm text-gray-600">
+                      {percentage}% ({count})
+                    </span>
+                  )}
+                </div>
               </button>
-              <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Create new poll
-              </Link>
-            </div>
-          </div>
+            );
+          })}
+        </div>
+
+        {voted && (
+          <p className="mt-4 text-sm text-blue-600">
+            Your vote has been recorded.
+          </p>
+        )}
+
+        <div className="flex justify-between mt-6 border-t pt-4 text-sm">
+          <button onClick={copyLink} className="text-blue-600">
+            Copy share link
+          </button>
+          <Link to="/" className="text-gray-500">
+            Create new poll
+          </Link>
         </div>
       </div>
-    </Layout>
+    </div>
   );
 }
-
-export default PollRoom;
