@@ -3,10 +3,26 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getDeviceVoterId, hasVotedOn, markVoted } from "@/lib/voter";
 import { motion, AnimatePresence } from "framer-motion";
+import confetti from "canvas-confetti";
 
 interface RoomOption {
   id: string;
   label: string;
+}
+
+// simple emoji auto detector
+function iconSuggest(text: string) {
+  const t = text.toLowerCase();
+  if (t.includes("yes")) return "✅";
+  if (t.includes("no")) return "❌";
+  if (t.includes("tvk")) return "🟡";
+  if (t.includes("dmk")) return "🔴";
+  if (t.includes("bjp")) return "🟠";
+  if (t.includes("coffee")) return "☕";
+  if (t.includes("tea")) return "🍵";
+  if (t.includes("pizza")) return "🍕";
+  if (t.includes("burger")) return "🍔";
+  return "🔘";
 }
 
 export default function PollRoom() {
@@ -39,6 +55,7 @@ export default function PollRoom() {
         () => {
           loadVotes();
           setPulse(true);
+          confetti({ particleCount: 40, spread: 60 });
           setTimeout(() => setPulse(false), 300);
         }
       )
@@ -105,14 +122,21 @@ export default function PollRoom() {
       </div>
     );
 
+  const maxVotes = Math.max(...Object.values(voteCounts), 0);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+    <div
+      className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center"
+      style={{ backgroundImage: "url(/hero-bg.jpg)" }}
+    >
 
       <motion.div
         initial={{ opacity: 0, y: 25 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className={`w-full max-w-lg bg-white rounded-2xl p-8 border shadow-xl ${pulse ? "ring-2 ring-blue-400" : ""}`}
+        className={`w-full max-w-lg rounded-2xl p-8 border shadow-xl backdrop-blur bg-white/80 ${
+          pulse ? "ring-2 ring-blue-400" : ""
+        }`}
       >
 
         <h1 className="text-xl font-bold mb-1">{question}</h1>
@@ -120,7 +144,8 @@ export default function PollRoom() {
         <motion.p
           key={totalVotes}
           initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
+          animate={{ opacity: 1, y: 0, scale: [1, 1.05, 1] }}
+          transition={{ repeat: Infinity, duration: 2 }}
           className="text-sm text-gray-500 mb-6"
         >
           {totalVotes} vote{totalVotes !== 1 ? "s" : ""}
@@ -137,7 +162,9 @@ export default function PollRoom() {
                 key={opt.id}
                 onClick={() => castVote(opt.id)}
                 disabled={voted}
-                className="relative w-full text-left border rounded-xl p-3 overflow-hidden disabled:cursor-default hover:shadow-md transition"
+                className={`relative w-full text-left border rounded-xl p-3 overflow-hidden disabled:cursor-default hover:shadow-md transition ${
+                  count === maxVotes && voted ? "border-blue-500" : ""
+                }`}
               >
 
                 <motion.div
@@ -147,8 +174,12 @@ export default function PollRoom() {
                   className="absolute inset-y-0 left-0 bg-blue-100"
                 />
 
-                <div className="relative flex justify-between">
-                  <span className="font-medium">{opt.label}</span>
+                <div className="relative flex justify-between items-center">
+
+                  <span className="font-medium flex gap-2 items-center">
+                    {iconSuggest(opt.label)}
+                    {opt.label}
+                  </span>
 
                   <AnimatePresence>
                     {totalVotes > 0 && (
@@ -163,6 +194,7 @@ export default function PollRoom() {
                       </motion.span>
                     )}
                   </AnimatePresence>
+
                 </div>
 
               </motion.button>

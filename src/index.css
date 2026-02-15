@@ -92,3 +92,16 @@
     @apply bg-background text-foreground;
   }
 }
+
+body {
+  background: radial-gradient(circle at top, #e0f2fe 0%, #f8fafc 40%, #f1f5f9 100%);
+}
+
+.glass {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(12px);
+}
+
+.glow {
+  box-shadow: 0 0 25px rgba(59,130,246,.25);
+}
